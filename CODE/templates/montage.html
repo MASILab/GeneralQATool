@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Montage with QA Buttons</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f8ff; /* Light blue background */
+        }
+        .image-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .image-preview {
+            width: 400px; /* Adjust image preview size as needed */
+            height: auto;
+            margin-bottom: 10px;
+        }
+        .image-name {
+            font-weight: bold;
+            text-decoration: underline;
+            margin-bottom: 10px;
+        }
+        .qa-buttons {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        .qa-button {
+            margin: 0 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            background-color: #ccc; /* Gray background by default */
+        }
+        .qa-button.active {
+            background-color: lightgreen; /* Green for Yes */
+        }
+        .qa-button.active.yes {
+            background-color: lightgreen; /* Green for Yes */
+        }
+        .qa-button.active.no {
+            background-color: tomato; /* Red for No */
+        }
+        .qa-button.active.maybe {
+            background-color: yellow; /* Yellow for Maybe */
+        }
+        .horizontal-line {
+            width: 100%;
+            border-top: 1px solid #ccc;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .reason-input {
+            margin-top: 10px;
+            padding: 5px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .reason-input.focused {
+            border: 2px solid red;
+            /* Add other styles to indicate focus maybe? */
+        }
+
+        .loading-bar-container {
+            width: 100%;
+            height: 20px;
+            background-color: #eee;
+            margin-top: 10px;
+            position: relative;
+        }
+        .loading-bar-progress {
+            height: 100%;
+            width: 0%;
+            background-color: #4caf50;
+            position: absolute;
+            top: 0;
+            transition: width 0.3s ease-in-out; /* Smooth transition for width change */
+        }
+        .hidden {
+            display: none; /* Utility class to hide elements */
+        }
+    </style>
+</head>
+<body>
+    <div id="imageMontage"></div>
+    <div id="counter" class="counter">0/0</div>
+    <div class="loading-bar-container">
+        <div id="loadingBar" class="loading-bar-progress"></div>
+    </div>
+
+    <script>
+        // Extract image paths from template data
+        const imagePaths = JSON.parse('{{ image_paths|tojson|safe }}'); /* const imagePaths = {{ image_paths|tojson }}; */
+        const clickedPath = '{{ clicked_path }}';
+        const pipeline = '{{ pipeline }}';
+        let currentImageIndex = 0; // Track current image index
+        let isLooping = false; // Flag to track if looping is active
+        let updateInterval = null; // Interval reference for automatic update
+        let reasonInput; // Declare globally to access in multiple functions
+        let isInputFocused = false; // Flag to track if an input field is focused
+        // save the json dict to a variable
+        const nestedDict = JSON.parse('{{ json_dict | tojson | safe }}');
+        const imageElements = []; // Array to store image elements
+
+        // Function to construct the image URL
+        function constructImageUrl(clickedPath, pipeline, imageName) {
+            return `/datasets/${encodeURIComponent(clickedPath)}/${encodeURIComponent(pipeline)}/${encodeURIComponent(imageName)}`;
+        }
+
+        //function that preloads all images and initializes the montage
+        function preloadImagesAndInitialize() {
+            let loadedCount = 0;
+            const totalImages = imagePaths.length;
+
+            // Function to handle image loading
+            function handleImageLoad() {
+                loadedCount++;
+                updateLoadingBar(loadedCount, totalImages);
+                if (loadedCount === totalImages) {
+                    hideLoadingBar();
+                    initializeMontage();
+                }
+            }
+
+            imagePaths.forEach((imagePath, index) => {
+                const imageUrl = constructImageUrl(clickedPath, pipeline, imagePath.split('/').pop());
+                const img = new Image();
+                img.onload = () => {
+                    imageElements[index] = img; // Store loaded image element
+                    handleImageLoad();
+                };
+                img.onerror = () => {
+                    console.log('Error loading image:', imagePath.split('/').pop());
+                    handleImageLoad(); // Ensure loadedCount is updated even if there's an error
+                };
+                img.src = imageUrl;
+            });
+        }
+        // function preloadImagesAndInitialize() {
+        //     let loadedCount = 0;
+        //     const totalImages = imagePaths.length;
+            
+        //     // Preload all images
+        //     imagePaths.forEach((imagePath, index) => {
+        //         try {
+        //             imageUrl = constructImageUrl(clickedPath, pipeline, imagePath.split('/').pop());
+        //             img = new Image();
+        //         }
+        //         catch {
+        //             console.log('Error loading image:', imagePath.split('/').pop());
+        //         }
+        //         img.onload = () => {
+        //             imageElements[index] = img; // Store loaded image element
+        //             loadedCount++;
+        //             updateLoadingBar(loadedCount, totalImages);
+        //             if (loadedCount === imagePaths.length) {
+        //                 hideLoadingBar();
+        //                 console.log('All images loaded. Hiding laoding bar and initializing montage...');
+        //                 initializeMontage();
+        //             }
+        //         };
+        //         img.src = imageUrl;
+        //     });
+        // }
+
+
+        // Function to update the loading bar
+        function updateLoadingBar(loadedCount, totalImages) {
+            const percentLoaded = (loadedCount / totalImages) * 100;
+            const loadingBar = document.getElementById('loadingBar');
+            loadingBar.style.width = `${percentLoaded}%`;
+        }
+
+        // Function to hide the loading bar
+        function hideLoadingBar() {
+            const loadingBarContainer = document.querySelector('.loading-bar-container');
+            if (loadingBarContainer) {
+                loadingBarContainer.classList.add('hidden');
+            }
+        }
+
+        // Function to initialize the montage
+        function initializeMontage() {
+            const imageMontage = document.getElementById('imageMontage');
+            imageMontage.innerHTML = ''; // Clear existing content
+
+             //maybe define this as a global variable, then update it when the user changes the QA status
+            //console.log('json_dict', JSON.parse('{{ json_dict | tojson | safe }}'));
+
+            // Create elements for current image
+            const imagePath = imagePaths[currentImageIndex];
+            //console.log(imagePath);
+            const imageName = imagePath.split('/').pop(); // Get filename from path
+            //console.log(imageName);
+
+            const imageContainer = document.createElement('div');
+            imageContainer.className = 'image-container';
+
+            const imagePreview = document.createElement('img');
+            imagePreview.className = 'image-preview';
+            /*imagePreview.src = imagePath; // Set image source*/
+            // Fetch image path dynamically from Flask endpoint
+            /*fetchImage(imagePath, imagePreview);*/
+
+            // get the BIDS fields from the image name (as a dict with keys: sub, ses, acq, run)
+            const bidsFields = getBIDSFieldsFromPNG(imageName, false);
+            //console.log('BIDS Fields:', bidsFields);
+
+            // get the leaf dictionary from the nested dictionary using the BIDS fields
+            const qaDict = getLeafDict(nestedDict, bidsFields);
+            console.log('QA Dictionary:', qaDict);
+
+            //const imageUrl = constructImageUrl(clickedPath, pipeline, imageName);
+            //console.log('Fetching image from URL:', imageUrl);
+            const imageUrl = imageElements[currentImageIndex].src;
+            imagePreview.src = imageUrl;
+
+            imageContainer.appendChild(imagePreview);
+
+            const nameElement = document.createElement('div');
+            nameElement.className = 'image-name';
+            nameElement.textContent = imageName;
+            imageContainer.appendChild(nameElement);
+
+            const qaButtons = document.createElement('div');
+            qaButtons.className = 'qa-buttons';
+
+            // Create QA buttons
+            //console.log('QA Status:', qaDict['QA_status']);
+            const yesButton = createQAButton('Yes', qaDict['QA_status'] == 'yes');
+            const noButton = createQAButton('No', qaDict['QA_status'] == 'no');
+            const maybeButton = createQAButton('Maybe', qaDict['QA_status'] == 'maybe');
+
+            qaButtons.appendChild(yesButton);
+            qaButtons.appendChild(noButton);
+            qaButtons.appendChild(maybeButton);
+            imageContainer.appendChild(qaButtons);
+
+            // Reason input box
+            const reasonInput = document.createElement('input');
+            reasonInput.type = 'text';
+            reasonInput.className = 'reason-input';
+            reasonInput.placeholder = 'Enter reason for QA status...';
+            reasonInput.value = qaDict['reason'];
+            //reasonInput.addEventListener('focus', () => { isInputFocused = true; });
+            //reasonInput.addEventListener('blur', () => { isInputFocused = false; });
+
+            //WIP
+            reasonInput.addEventListener('focus', () => { 
+                isInputFocused = true; 
+                reasonInput.classList.add('focused'); // Optional: add a class to highlight the input
+                //console.log('Input focused');
+            });
+            reasonInput.addEventListener('blur', () => { 
+                isInputFocused = false; 
+                reasonInput.classList.remove('focused'); // Remove highlight
+                //console.log('Input unfocused');
+            });
+            imageContainer.appendChild(reasonInput);
+
+
+            imageMontage.appendChild(imageContainer);
+
+            // Update counter
+            updateCounter();
+
+            // Add horizontal line after each image container
+            const horizontalLine = document.createElement('div');
+            horizontalLine.className = 'horizontal-line';
+            imageMontage.appendChild(horizontalLine);
+        }
+
+        // Function to fetch image dynamically
+        function fetchImage(imagePath, imgElement) {
+            // Fetch image path dynamically from Flask endpoint
+            //console.log('Fetching image from URL:', imagePath);
+            fetch(`{{ url_for('serve_image', clicked_path=clicked_path, pipeline=pipeline, image_filename=imagePath) }}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // Set the image source once the blob is received
+                    const imageUrl = URL.createObjectURL(blob);
+                    imgElement.src = imageUrl;
+                })
+                .catch(error => {
+                    console.error('Error fetching image:', error);
+                });
+        }
+
+        // Function to update the counter
+        function updateCounter() {
+            const counterElement = document.getElementById('counter');
+            counterElement.textContent = `${currentImageIndex + 1}/${imagePaths.length}`;
+        }
+
+        // Function to create a QA button
+        function createQAButton(status, isActive) {
+            const button = document.createElement('button');
+            button.className = `qa-button ${status.toLowerCase()}`;
+            button.textContent = status;
+            if (isActive) { 
+                button.classList.add('active');
+            }
+            button.addEventListener('click', function() {
+                // Remove active class from all buttons
+                document.querySelectorAll('.qa-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                // Highlight button (i.e. set the active status for this button)
+                button.classList.add('active');
+            });
+            return button;
+        }
+
+        //WIP: function to get a specific QA button
+            //for instance, pass it the text 'Yes' and it will return the button with the text 'Yes'
+        function findButtonByTextContent(text) {
+            const buttons = document.querySelectorAll('.qa-button');
+            for (let button of buttons) {
+                if (button.textContent === text) {
+                    return button;
+                }
+            }
+            return null;  // If no button with the specified text is found
+        }
+
+        //WIP: set the current button status to active
+        function setButtonActive(button) {
+            document.querySelectorAll('.qa-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            // Highlight button (i.e. set the active status for this button)
+            button.classList.add('active');
+        }
+
+        // Function to handle keyboard events
+        function handleKeyboardEvent(event) {
+
+            if (event.code === 'Enter') {
+                const reasonInput = document.querySelector('.reason-input');
+                if (!reasonInput) {
+                    console.error('reasonInput is not initialized yet.');
+                    return; // Exit if reasonInput is undefined
+                }
+                if (isInputFocused) {
+                    // Unfocus the input field
+                    reasonInput.blur(); // This will trigger the 'blur' event and set isInputFocused to false
+                    //console.log('event Input unfocused');
+                } else {
+                    // Focus the input field
+                    reasonInput.focus(); // This will trigger the 'focus' event and set isInputFocused to true
+                    //console.log('event Input focused');
+                }
+                // Prevent further handling of the Enter key
+                event.preventDefault();
+            }
+            else {
+                if (isInputFocused) {
+                    return; // Do nothing if an input field is focused
+                }
+
+                switch (event.code) {
+                    case 'ArrowLeft':
+                        navigateImage(-1); // Move to previous image
+                        break;
+                    case 'ArrowRight':
+                        navigateImage(1); // Move to next image
+                        break;
+                    case 'Space':
+                        toggleLoop(); // Toggle looping on spacebar press
+                        break;
+                    // TODO: Keyboard shortcuts for QA buttons
+                    case 'KeyQ':
+                        button = findButtonByTextContent('Yes');
+                        if (button) {
+                            button.click();
+                        }
+                        break;
+                    case 'KeyW':
+                        button = findButtonByTextContent('No');
+                        if (button) {
+                            button.click();
+                        }
+                        break;
+                    case 'KeyE':
+                        button = findButtonByTextContent('Maybe');
+                        if (button) {
+                            button.click();
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+        // Function to navigate images
+        function navigateImage(direction) {
+
+            // check the status of the current QA button and reason compared to the QA dictionary
+                //if they are different, update the dictionary accordingly and push the changes to the server
+            const qaButtons = document.querySelectorAll('.qa-button');
+            console.log(qaButtons); //check to see if the buttons are being selected
+            const qaStatus = Array.from(qaButtons).find(btn => btn.classList.contains('active')).textContent.toLowerCase();
+            const reasonInput = document.querySelector('.reason-input').value;
+            //console.log('Current QA Status:', qaStatus);
+            //console.log('Current Reason:', reasonInput);
+
+            // get the current values in the json dictionary
+            const imagePath = imagePaths[currentImageIndex];
+            const imageName = imagePath.split('/').pop(); // Get filename from path
+            const bidsFields = getBIDSFieldsFromPNG(imageName, false);
+            const qaDict = getLeafDict(nestedDict, bidsFields);
+
+            // check to see if there is a difference detected. If so update the dictionary and push the changes to the server
+                // perhaps the code can be optimized to only check for a change if a button was pressed or reason box was clicked
+            //console.log('DICT: QA Status:', qaDict['QA_status'], 'Reason:', qaDict['reason']);
+            //console.log('INPUT: QA Status:', qaStatus, 'Reason:', reasonInput);
+            if (qaStatus !== qaDict['QA_status'] || reasonInput !== qaDict['reason']) {
+                console.log('QA Status or Reason has changed. Updating dictionary...');
+                // Update the QA status and reason in the dictionary
+                //console.log(qaDict)
+                qaDict['QA_status'] = qaStatus;
+                qaDict['reason'] = reasonInput;
+                //console.log(qaDict)
+
+                //need to also update the user and the datetime
+                //qaDict['user'] = '{{ user }}';
+                qaDict['date'] = getDateTime();
+
+                // Push the updated dictionary to the server
+                fetch('/update_qa_dict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(nestedDict)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Updated QA Dictionary:', data);
+                })
+                .catch(error => {
+                    console.error('Error updating QA dictionary:', error);
+                });
+            }
+
+            currentImageIndex = (currentImageIndex + direction + imagePaths.length) % imagePaths.length;
+
+            // when navigating to the last image, stop the loop
+            if (currentImageIndex === imagePaths.length - 1) {
+                //clearInterval(updateInterval); #commented out for testing faster fn
+                isLooping = false;
+            }
+
+            initializeMontage();
+        }
+
+        function startImageLoop() {
+            isLooping = true;
+            function loop() {
+                if (isLooping) {
+                    navigateImage(1); // Move to next image
+                    setTimeout(() => requestAnimationFrame(loop), 250); // Adjust timeout for desired speed
+                }
+            }
+            requestAnimationFrame(loop);
+        }
+
+        function toggleLoop() {
+            isLooping = !isLooping;
+            if (isLooping) {
+                startImageLoop();
+            } else {
+                // Note: There's no direct way to stop `requestAnimationFrame`, so you rely on `isLooping`
+                
+            }
+        }
+
+        //commented out for testing faster fn
+        // // Function to toggle looping (maybe include a backwards montage option as well)
+        // function toggleLoop() {
+        //     isLooping = !isLooping;
+        //     if (isLooping) {
+        //         updateInterval = setInterval(() => {
+        //             navigateImage(1); // Move to next image every 0.25 seconds
+        //         }, 250);
+        //     } else {
+        //         clearInterval(updateInterval);
+        //     }
+        // }
+
+        // Function to extract BIDS fields from a PNG filename. Returns a dictionary with the BIDS fields
+        function getBIDSFieldsFromPNG(filename, returnPipeline = false) {
+            // // Define the regular expression pattern
+            // // Note: JavaScript regex does not have named capture groups directly like Python's (?P<name>pattern)
+            // // Instead, we use positional capture groups and then access them by index.
+            // //var pattern = /(sub-\w+)(?:_(ses-\w+))?(?:_(\w+))(?:(acq-\w+))?(?:(run-\d{1,2}))?.png/;
+            // //var pattern = /(sub-\w+)(?:_(ses-\w+))?_([A-Za-z0-9\.]*)(?:(acq-\w+))?(?:(run-\d{1,2}))?\.png/;
+            // var pattern = /(sub-\w+)(?:_(ses-\w+))?_([A-Za-z0-9\.\-]+?)(?=acq\-|run\-|\.png)(?:(acq-\w+))?(?:(run-\d{1,2}))?\.png/;
+            // var match = filename.match(pattern);
+
+            // // Assert that a match is found
+            // if (!match) {
+            //     throw Error(`Filename ${filename} does not match the expected pattern.`);
+            // }
+
+            // // Extract BIDS fields from the match groups
+            // var tags = {
+            //     sub: match[1],
+            //     ses: match[2] ? match[2] : undefined,
+            //     acq: match[4] ? match[4] : undefined,
+            //     run: match[5] ? match[5] : undefined
+            // };
+
+            // // Optionally include the pipeline field if specified
+            // if (returnPipeline && match[3]) {
+            //     tags.pipeline = match[3];
+            // }
+            var tags = {
+                filename: filename
+            };
+            return tags;
+        }
+
+        // Function to retrieve a leaf dictionary from a nested dictionary given the BIDS tags
+        function getLeafDict(nestedDict, tags) {
+            console.log('Tags:', tags);
+            //var leafDict = nestedDict[tags.sub];
+            var leafDict = nestedDict[tags.filename];
+            // if (tags.ses !== undefined) {
+            //     leafDict = leafDict[tags.ses];
+            // }
+            // if (tags.acq !== undefined) {
+            //     leafDict = leafDict[tags.acq];
+            // }
+            // if (tags.run !== undefined) {
+            //     leafDict = leafDict[tags.run];
+            // }
+            return leafDict;
+        }
+
+        // get the datetime
+        function getDateTime() {
+            const now = new Date();
+
+            // Format the date and time as "YYYY-MM-DD HH:MM:SS"
+            const formattedDate = now.toLocaleString('en-CA', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            }).replace(',', '');
+
+            return formattedDate;
+            //console.log('Formatted Date and Time:', formattedDate);
+
+            // console.log('Username:', '{{ user }}');
+        }
+
+        // Event listener for keyboard events
+            // perhaps may be able to rewrite code so that this can be in the initializeMontage function
+            // as a wrapper for the handleKeyboardEvent function, allowing us to pass additional values like
+            // bidsFields and qaDict (so they don't have to be retreived again in navigateImage)
+        document.addEventListener('keydown', handleKeyboardEvent);
+
+        // Initialize montage on page load
+        preloadImagesAndInitialize();
+        //initializeMontage();
+    </script>
+</body>
+</html>
