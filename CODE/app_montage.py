@@ -500,7 +500,13 @@ def update_qa_dict():
     # Return a JSON response with the updated dictionary
     return jsonify({'status': 'success', 'updatedDict': nested_dict})
 
-
+print("*****************")
+print("*****************")
+print()
+print("Author: Michael Kim")
+print()
+print("*****************")
+print("*****************")
 if args.debug:
     app.run(debug=True)
 else:
