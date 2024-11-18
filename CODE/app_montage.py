@@ -277,7 +277,7 @@ def check_png_for_json(dicts, pngs):
         #     png += f"{run}"
         # png += ".png"
         png = dic['filename']
-        print(pngs)
+        #print(pngs)
         assert png in pngs, f"PNG {png} from {dic} not in list of pngs"
 
 def check_json_for_png(nested, pngs):
