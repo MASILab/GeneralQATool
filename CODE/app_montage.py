@@ -86,6 +86,7 @@ def get_tag_type(d):
     """
     Returns the type of BIDS tag for sub, ses, acq, run. Throws an error if the tag is not one of these.
     """
+    return d #for filesystem agnostic, we just need the filename
     tag_types = {
         'sub': 'sub',
         'ses': 'ses',
@@ -110,15 +111,21 @@ def get_leaf_dicts(d, path=None, curr_dict=None):
     nested_keys = {}
     leaf_keys = {}
     for key, value in d.items():
-        #print(key)
         if isinstance(value, dict):
             nested_keys[key] = (value,d)
         else:
             leaf_keys[key] = (value,d)
 
+    #for i, (key,val) in enumerate(nested_keys.items()):
+        #if i ==5:
+        #    break
+        #print("Value:", val[0])
+        #print("Key:", key)
+
+
     for nested_key, (nested_value, nested_dict) in nested_keys.items():
         new_path = path + [nested_key]
-        curr_dict[get_tag_type(nested_key)] = nested_key
+        curr_dict[get_tag_type(nested_key)] = nested_value
 
         leaf_dicts.extend(get_leaf_dicts(nested_value, new_path, curr_dict))
     
@@ -277,7 +284,7 @@ def check_png_for_json(dicts, pngs):
         #     png += f"{run}"
         # png += ".png"
         png = dic['filename']
-        print(pngs)
+        #print(pngs)
         assert png in pngs, f"PNG {png} from {dic} not in list of pngs"
 
 def check_json_for_png(nested, pngs):
